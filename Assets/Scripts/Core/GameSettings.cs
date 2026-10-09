@@ -12,13 +12,14 @@ namespace SnowBoarder
         const string KeyMaster = "sb_master_volume";
         const string KeySfx = "sb_sfx_volume";
         const string KeyMusic = "sb_music_volume";
-        static bool muted;
         const string KeyWeather = "sb_weather";
         const string KeyShake = "sb_shake";
         const string KeyCharacter = "sb_character";
         const string KeyBoard = "sb_board";
         const string KeyMode = "sb_mode";
         const string KeyLevel = "sb_level";
+
+        static bool muted;
 
         public static float MasterVolume
         {
