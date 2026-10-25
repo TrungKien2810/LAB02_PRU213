@@ -55,6 +55,7 @@ namespace SnowBoarder
         public event System.Action Jumped;
 
         int groundContacts;
+        PlayerHead headSensor;  // found on the child "Head", so no inspector wiring is needed
         float lastGroundedTime;
         float leftGroundTime;
         float airRotation;      // accumulated degrees while airborne
@@ -68,6 +69,12 @@ namespace SnowBoarder
         void Awake()
         {
             Body = GetComponent<Rigidbody2D>();
+            headSensor = GetComponentInChildren<PlayerHead>(true);
+            // The head is a second collider, so the automatically derived centre of mass would sit
+            // higher than the board and change how the boarder balances. Pin it to the board, which
+            // is where it was when the board was the only collider.
+            var boardCollider = GetComponent<CapsuleCollider2D>();
+            if (boardCollider) Body.centerOfMass = boardCollider.offset;
             leftGroundTime = Time.time;
             Stats = CharacterData.Current;
             if (topRenderer) topRenderer.color = Stats.JacketTint;
@@ -106,7 +113,12 @@ namespace SnowBoarder
 
         void FixedUpdate()
         {
-            if (IsFrozen || IsCrashed) return;
+            if (IsFrozen) return;
+
+            // A crashed boarder is a ragdoll: no input, but the same drag and hard speed cap as
+            // any other frame. Returning here before them (as this used to) let a crash fall
+            // accelerate past the cap, which is the state most likely to cross the snow surface.
+            if (IsCrashed) { LimitVelocity(); return; }
 
             float dt = Time.fixedDeltaTime;
             Vector2 v = Body.linearVelocity;
@@ -165,13 +177,8 @@ namespace SnowBoarder
                 }
             }
 
-            // air drag (quadratic) keeps a natural terminal velocity
-            v = Body.linearVelocity;
-            Body.AddForce(-v * v.magnitude * airDrag * Body.mass);
-
-            // hard cap
-            float cap = CurrentMaxSpeed * 1.25f;
-            if (v.magnitude > cap) Body.linearVelocity = v.normalized * cap;
+            // air drag (quadratic) keeps a natural terminal velocity, hard cap on top
+            LimitVelocity();
 
             // effects
             if (snowSpray)
@@ -180,6 +187,16 @@ namespace SnowBoarder
                 em.rateOverTime = IsTouchingGround ? Mathf.Lerp(0f, IsBraking ? 120f : 60f, Speed / 15f) : 0f;
             }
             AudioManager.Instance?.SetWind(Speed / CurrentMaxSpeed);
+        }
+
+        /// <summary>Quadratic air drag for a natural terminal velocity, plus the hard speed cap.</summary>
+        void LimitVelocity()
+        {
+            Vector2 v = Body.linearVelocity;
+            Body.AddForce(-v * v.magnitude * airDrag * Body.mass);
+
+            float cap = CurrentMaxSpeed * 1.25f;
+            if (v.magnitude > cap) Body.linearVelocity = v.normalized * cap;
         }
 
         public float CurrentMaxSpeed => Stats.MaxSpeed * (IsBoosting ? 1.4f : 1f) * (slowTimer > 0f ? 0.6f : 1f);
@@ -202,7 +219,14 @@ namespace SnowBoarder
         // ---------------- ground detection ----------------
         void OnCollisionEnter2D(Collision2D c)
         {
-            if (!c.collider.GetComponent<Ground>()) return;
+            // The head is a separate sensor: snow on the head is a crash (or a shield bounce),
+            // never a riding contact, so it must not count towards groundContacts or fire OnLand.
+            if (HasHead(c))
+            {
+                if (HasGround(c) && headSensor) headSensor.TouchedSnow();
+                return;
+            }
+            if (!HasGround(c)) return;
             bool wasAirborne = groundContacts == 0;
             groundContacts++;
             UpdateNormal(c);
@@ -211,12 +235,12 @@ namespace SnowBoarder
 
         void OnCollisionStay2D(Collision2D c)
         {
-            if (c.collider.GetComponent<Ground>()) UpdateNormal(c);
+            if (HasGround(c) && !HasHead(c)) UpdateNormal(c);
         }
 
         void OnCollisionExit2D(Collision2D c)
         {
-            if (!c.collider.GetComponent<Ground>()) return;
+            if (!HasGround(c) || HasHead(c)) return;
             groundContacts = Mathf.Max(0, groundContacts - 1);
             if (groundContacts == 0)
             {
@@ -225,15 +249,37 @@ namespace SnowBoarder
                 airRotation = 0f;
                 grabTime = 0f;
                 lastAngle = Body.rotation;
+                GroundNormal = Vector2.up; // no stale slope normal left behind for BoostPadKick
             }
         }
+
+        // Collision2D does not define which of its two colliders is which for the receiver, so
+        // both sides are inspected instead of relying on collider / otherCollider being a
+        // particular one of the pair.
+        static bool HasGround(Collision2D c) =>
+            (c.collider != null && c.collider.GetComponent<Ground>() != null) ||
+            (c.otherCollider != null && c.otherCollider.GetComponent<Ground>() != null);
+
+        static bool HasHead(Collision2D c) =>
+            (c.collider != null && c.collider.GetComponent<PlayerHead>() != null) ||
+            (c.otherCollider != null && c.otherCollider.GetComponent<PlayerHead>() != null);
 
         void UpdateNormal(Collision2D c)
         {
             if (c.contactCount == 0) return;
-            Vector2 n = Vector2.zero;
-            for (int i = 0; i < c.contactCount; i++) n += c.GetContact(i).normal;
-            GroundNormal = n.normalized;
+
+            // Use the single most upward-facing contact. Summing the normals (as this used to)
+            // is wrong wherever two contacts partly cancel: a summed "normal" can come out as
+            // zero, and a zero normal silently switches friction off and drives the
+            // align-to-slope block below towards -90 degrees.
+            Vector2 best = Vector2.up;
+            float bestY = float.NegativeInfinity;
+            for (int i = 0; i < c.contactCount; i++)
+            {
+                Vector2 n = c.GetContact(i).normal;
+                if (n.y > bestY) { bestY = n.y; best = n; }
+            }
+            GroundNormal = best.sqrMagnitude > 1e-6f ? best.normalized : Vector2.up;
             lastGroundedTime = Time.time;
         }
 
@@ -256,6 +302,10 @@ namespace SnowBoarder
         public void Crash()
         {
             if (IsCrashed || IsFrozen) return;
+            // Once the run is over (finished or game over) a crash must not be recorded: only
+            // Respawn clears IsCrashed and no respawn is scheduled in those states, so the
+            // boarder would stay locked in the crashed state.
+            if (GameManager.Instance != null && !GameManager.Instance.CanCrash) return;
             IsCrashed = true;
             if (crashEffect) crashEffect.Play();
             if (snowSpray) { var em = snowSpray.emission; em.rateOverTime = 0f; }
@@ -293,6 +343,7 @@ namespace SnowBoarder
             IsCrashed = false;
             IsFrozen = false;
             groundContacts = 0;
+            GroundNormal = Vector2.up;
             airRotation = 0f;
             lastAngle = 0f;
             respawnGraceTimer = 2f;

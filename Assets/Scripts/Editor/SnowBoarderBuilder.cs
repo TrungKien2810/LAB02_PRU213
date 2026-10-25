@@ -251,7 +251,7 @@ namespace SnowBoarder.EditorTools
             var head = new GameObject("Head");
             head.transform.SetParent(root.transform, false);
             head.transform.localPosition = new Vector3(0.35f, 0.59f, 0f);
-            var hc = head.AddComponent<CircleCollider2D>(); hc.isTrigger = true; hc.radius = 0.3f;
+            var hc = head.AddComponent<CircleCollider2D>(); hc.isTrigger = false; hc.radius = 0.3f;
             var ph = head.AddComponent<PlayerHead>();
 
             // snow spray behind the board

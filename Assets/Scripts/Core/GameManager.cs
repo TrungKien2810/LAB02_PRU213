@@ -20,6 +20,8 @@ namespace SnowBoarder
         [SerializeField] PlayerController player;
         [SerializeField] HUDController hud;
         [SerializeField] Transform startPoint;
+        [SerializeField] TerrainGenerator terrain;   // found automatically when left empty
+        [SerializeField] float fallMargin = 6f;      // metres below the snow that mean "fell through"
 
         [Header("Rules")]
         [SerializeField] int startLives = 3;
@@ -45,6 +47,9 @@ namespace SnowBoarder
         public int BestCombo { get; private set; }
         public PlayerController Player => player;
 
+        /// <summary>True while a crash still costs something and is followed by a respawn.</summary>
+        public bool CanCrash => State == GameState.Playing;
+
         Vector3 checkpoint;
         float speedScoreAccum;
         float timePenalty;
@@ -57,6 +62,9 @@ namespace SnowBoarder
             Time.timeScale = 1f;
             checkpoint = startPoint ? startPoint.position : player.transform.position;
             TotalSnowflakes = FindObjectsByType<Collectible>().Length;
+            // Looked up rather than required in the inspector so levels built before this
+            // field existed still get the safety net.
+            if (!terrain) terrain = FindFirstObjectByType<TerrainGenerator>();
         }
 
         void OnDestroy()
@@ -101,6 +109,8 @@ namespace SnowBoarder
             if (kb != null && kb.rKey.wasPressedThisFrame && State != GameState.Paused) Restart();
 
             if (State != GameState.Playing) return;
+
+            if (FellThroughTerrain()) { RecoverFromFall(); return; }
 
             RunTime += Time.deltaTime;
 
@@ -256,6 +266,49 @@ namespace SnowBoarder
         }
 
         // ---------------- crash / respawn ----------------
+        /// <summary>
+        /// The snow is a single zero-thickness EdgeCollider2D and the visible snow body is only a
+        /// mesh, so there is nothing solid underneath to land on. Anything that ends up below the
+        /// surface line would fall for the rest of the session: the camera follows it out of the
+        /// world, no crash is ever reported and no timer ends the run. This is the last-resort
+        /// check that turns that softlock into a normal respawn.
+        /// </summary>
+        bool FellThroughTerrain()
+        {
+            if (!terrain || !player || player.IsCrashed || player.IsFrozen) return false;
+            if (terrain.Points == null || terrain.Points.Length < 2) return false; // no surface to compare against
+            Vector3 p = player.transform.position;
+            return p.y < terrain.HeightAt(p.x) - Mathf.Max(2f, fallMargin);
+        }
+
+        void RecoverFromFall()
+        {
+            BreakCombo();
+            CameraFollow.Instance?.Shake(0.6f, 0.5f);
+            AudioManager.PlaySfx(Sfx.Crash, 0.8f);
+
+            if (Mode == GameMode.Adventure)
+            {
+                Lives--;
+                hud.ShowPopup(Lives > 0 ? "OFF THE TRACK!" : "OUT OF LIVES!", new Color(1f, 0.4f, 0.4f), 1.2f);
+            }
+            else
+            {
+                timePenalty += timeTrialCrashPenalty;
+                hud.ShowPopup($"OFF THE TRACK! +{timeTrialCrashPenalty:0}s", new Color(1f, 0.4f, 0.4f), 1.2f);
+            }
+
+            player.Respawn(checkpoint); // straight back to solid ground, no 1.5 s of extra falling
+
+            if (Mode == GameMode.Adventure && Lives <= 0)
+            {
+                // Out of lives: hold the boarder at the checkpoint while the results come up.
+                State = GameState.Crashed; // also stops Update from re-entering this routine
+                player.Freeze(true);
+                StartCoroutine(GameOverRoutine());
+            }
+        }
+
         public void OnPlayerCrashed()
         {
             if (State != GameState.Playing) return;

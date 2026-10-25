@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 namespace SnowBoarder
 {
-    public enum Sfx { Crash, Finish, Pickup, PowerUp, Jump, Land, Trick, Hit, Smash, Boost, Pause, Click, Checkpoint, GameOver }
+    public enum Sfx { Crash, Finish, Pickup, PowerUp, Jump, Land, Trick, Hit, Smash, Boost, Pause, Click, Checkpoint, GameOver, Hover }
 
     /// <summary>
     /// Plays sound effects and the background music. Crash/Finish use the lab's audio files,
@@ -22,10 +22,15 @@ namespace SnowBoarder
         [SerializeField] AudioClip crashClip;
         [SerializeField] AudioClip finishClip;
 
-        AudioSource sfxSource;
+        // A small pool of voices: each shot keeps its own pitch, so a hover tick that is
+        // still ringing is not re-tuned by the click that follows it.
+        const int SfxVoices = 6;
+
+        AudioSource[] sfxVoices;
+        int nextVoice;
         AudioSource windSource;
         AudioSource musicSource;
-        AudioClip pickup, powerUp, jump, land, trick, hit, smash, boost, pause, click, checkpoint, gameOver, crashFallback, finishFallback;
+        AudioClip pickup, powerUp, jump, land, trick, hit, smash, boost, pause, click, hover, checkpoint, gameOver, crashFallback, finishFallback;
         float windTarget;
         float musicTarget, musicFade = 0f;
 
@@ -34,8 +39,12 @@ namespace SnowBoarder
             Instance = this;
             GameSettings.ApplyVolume();
 
-            sfxSource = gameObject.AddComponent<AudioSource>();
-            sfxSource.playOnAwake = false;
+            sfxVoices = new AudioSource[SfxVoices];
+            for (int i = 0; i < SfxVoices; i++)
+            {
+                sfxVoices[i] = gameObject.AddComponent<AudioSource>();
+                sfxVoices[i].playOnAwake = false;
+            }
 
             musicSource = gameObject.AddComponent<AudioSource>();
             musicSource.playOnAwake = false;
@@ -56,6 +65,9 @@ namespace SnowBoarder
             trick = SfxSynth.Arpeggio("Trick", new[] { 784f, 988f, 1175f, 1568f }, 0.06f, 0.35f);
             hit = SfxSynth.Sweep("Hit", 220f, 90f, 0.18f, 0.5f);
             click = SfxSynth.Arpeggio("Click", new[] { 880f }, 0.04f, 0.25f);
+            // 1976 Hz (B6) sits clear of the click's 880 / 1760 Hz partials, and the tick is
+            // ~2.5x shorter, so hovering and clicking are two clearly different sounds
+            hover = SfxSynth.Tick("Hover", 0.075f, 1976f, 0.6f);
             checkpoint = SfxSynth.Arpeggio("Checkpoint", new[] { 659f, 880f }, 0.1f, 0.35f);
             gameOver = SfxSynth.Arpeggio("GameOver", new[] { 392f, 330f, 262f }, 0.18f, 0.35f);
             smash = SfxSynth.NoiseBurst("Smash", 0.3f, 0.7f);
@@ -133,26 +145,51 @@ namespace SnowBoarder
 
         public void Play(Sfx sfx, float volume = 1f)
         {
-            AudioClip clip = sfx switch
-            {
-                Sfx.Crash => crashClip ? crashClip : crashFallback,
-                Sfx.Finish => finishClip ? finishClip : finishFallback,
-                Sfx.Pickup => pickup,
-                Sfx.PowerUp => powerUp,
-                Sfx.Jump => jump,
-                Sfx.Land => land,
-                Sfx.Trick => trick,
-                Sfx.Hit => hit,
-                Sfx.Smash => smash,
-                Sfx.Boost => boost,
-                Sfx.Pause => pause,
-                Sfx.Click => click,
-                Sfx.Checkpoint => checkpoint,
-                Sfx.GameOver => gameOver,
-                _ => null
-            };
-            if (clip != null) sfxSource.PlayOneShot(clip, volume * GameSettings.SfxVolume);
+            AudioClip clip = ClipFor(sfx);
+            if (clip == null) return;
+            if (sfxVoices == null) return; // Instance is published before the voices exist
+
+            float v = Mathf.Clamp01(volume) * GameSettings.SfxVolume;
+            if (v <= 0.0001f) return;
+
+            var voice = sfxVoices[nextVoice];
+            nextVoice = (nextVoice + 1) % sfxVoices.Length;
+            voice.pitch = PitchFor(sfx);
+            voice.PlayOneShot(clip, v);
         }
+
+        AudioClip ClipFor(Sfx sfx) => sfx switch
+        {
+            Sfx.Crash => crashClip ? crashClip : crashFallback,
+            Sfx.Finish => finishClip ? finishClip : finishFallback,
+            Sfx.Pickup => pickup,
+            Sfx.PowerUp => powerUp,
+            Sfx.Jump => jump,
+            Sfx.Land => land,
+            Sfx.Trick => trick,
+            Sfx.Hit => hit,
+            Sfx.Smash => smash,
+            Sfx.Boost => boost,
+            Sfx.Pause => pause,
+            Sfx.Click => click,
+            Sfx.Hover => hover,
+            Sfx.Checkpoint => checkpoint,
+            Sfx.GameOver => gameOver,
+            _ => null
+        };
+
+        /// <summary>
+        /// A few percent of random detune on the cues that repeat the most, so sweeping the
+        /// pointer over a button row or picking up a run of snowflakes never turns into a
+        /// machine gun. The one-shot crash / finish clips keep their original pitch.
+        /// </summary>
+        static float PitchFor(Sfx sfx) => sfx switch
+        {
+            Sfx.Hover => Random.Range(0.94f, 1.06f),
+            Sfx.Click => Random.Range(0.96f, 1.04f),
+            Sfx.Pickup => Random.Range(0.96f, 1.04f),
+            _ => 1f
+        };
 
         public static void PlaySfx(Sfx sfx, float volume = 1f)
         {

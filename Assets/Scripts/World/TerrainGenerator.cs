@@ -21,6 +21,12 @@ namespace SnowBoarder
         [SerializeField] float edgeAbove = 0.35f;
         [SerializeField] float edgeBelow = 0.75f;
         [SerializeField] float edgeTileLength = 4.5f;
+        // A zero-thickness edge has no interior: a body that ends up with the line inside it can
+        // be resolved out of either side, and coming out of the bottom means falling through the
+        // world. A radius gives the surface real volume ("a larger collider with rounded convex
+        // corners", per Unity's Edge Collider 2D reference) so contacts get pushed back up. 0.12
+        // is well under the boarder's 0.3 collider thickness and invisible at this scale.
+        [SerializeField] float edgeThickness = 0.12f;
         [SerializeField] Color topColor = new Color(0.85f, 0.97f, 1f);
         [SerializeField] Color bottomColor = new Color(0.25f, 0.45f, 0.75f);
         [SerializeField] int sortingOrder = 0;
@@ -55,6 +61,7 @@ namespace SnowBoarder
             if (points == null || points.Length < 2) return;
 
             var col = GetComponent<EdgeCollider2D>();
+            col.edgeRadius = Mathf.Max(0f, edgeThickness);
             col.points = points;
             if (!GetComponent<Ground>()) gameObject.AddComponent<Ground>();
 

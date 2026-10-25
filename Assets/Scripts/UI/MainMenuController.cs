@@ -43,6 +43,7 @@ namespace SnowBoarder
         {
             Time.timeScale = 1f;
             GameSettings.ApplyVolume();
+            UiButtonSfx.AttachAll(transform); // hover cue for every button, slider and toggle
 
             Wire(startButton, () => Show(playPanel));
             Wire(optionsButton, () => Show(optionsPanel));

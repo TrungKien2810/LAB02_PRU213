@@ -1,3 +1,6 @@
+# ============================================================
+# Unity - generated / cache folders (KHONG push len git)
+# ============================================================
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
@@ -6,13 +9,26 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
+/[Rr]ecordings/
+/[Ee]xportedObj/
+/[Aa]ssets/[Aa]ssetStoreTools*
+/[Aa]ssets/[Pp]lugins/[Ee]ditor/JetBrains*
 /.sfxverify/
+SysCache/
+syscache/
+
+# ============================================================
+# IDE / editor / solution files (tu sinh, khong can push)
+# ============================================================
 .vs/
 .vscode/
+.idea/
+.consulo/
 *.csproj
 *.sln
 *.suo
 *.user
+*.userprefs
 *.pidb
 *.booproj
 *.svd
@@ -20,7 +36,82 @@
 *.mdb
 *.opendb
 *.VC.db
+*.VC.opendb
+.axoCover/
+[Tt]est[Rr]esults/
+
+# ============================================================
+# Build output / package nang
+# ============================================================
 *.apk
 *.aab
+*.ipa
 *.unitypackage
+*.app
 crashlytics-build.properties
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ============================================================
+# Python tooling (Tools/*.py)
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Governance / agent / internal docs (neu co)
+# ============================================================
+# Thu muc governance & tai lieu noi bo
+/.dsh/
+/.agent/
+/.agents/
+/.ai/
+/governance/
+/docs/governance/
+/[Dd]ocs/governance/
+/[Dd]ocs/internal/
+/[Dd]ocs/_internal/
+/plans/
+/[Dd]ocs/plans/
+
+# File governance / huong dan cho AI agent
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.cursorrules
+.cursor/
+.windsurfrules
+.aider*
+.github/copilot-instructions.md
+*governance*.md
+*triage*.md
+*session-log*.md
+
+# Tai lieu governance chuan cua repo (bo comment neu muon push)
+# CONTRIBUTING.md
+# CODE_OF_CONDUCT.md
+# SECURITY.md
+# SUPPORT.md
+# CHANGELOG.md
+
+# ============================================================
+# OS / editor junk
+# ============================================================
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.tmp
+*.bak
+*.orig
+*.rej
+*.log

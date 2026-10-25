@@ -50,6 +50,7 @@ namespace SnowBoarder
         void Start()
         {
             gm = GameManager.Instance;
+            UiButtonSfx.AttachAll(transform); // hover cue for every button in the HUD panels
             pausePanel.SetActive(false);
             gameOverPanel.SetActive(false);
             completePanel.SetActive(false);

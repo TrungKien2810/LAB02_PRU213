@@ -40,6 +40,35 @@ namespace SnowBoarder
             return Make(name, data);
         }
 
+        /// <summary>
+        /// Short, bright UI tick for hover feedback.
+        /// A filtered-noise transient (1.5 ms attack) gives it an audible "edge" even on
+        /// laptop speakers, and two high partials with a slight upward glide plus a ~70 ms
+        /// exponential decay make it read as a deliberate click without a long ring that
+        /// would smear into a buzz when the pointer sweeps across several buttons.
+        /// </summary>
+        public static AudioClip Tick(string name, float len, float freq, float vol)
+        {
+            int count = Mathf.Max(8, (int)(Rate * len));
+            var data = new float[count];
+            var rng = new System.Random(3);
+            float lp = 0f, phase = 0f, phase2 = 0f;
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)Rate;
+                float k = i / (float)(count - 1);           // 0..1 across the tick
+                float f = freq * (1f + 0.08f * k);          // very slight rise: reads as "alive"
+                phase += 2 * Mathf.PI * f / Rate;
+                phase2 += 2 * Mathf.PI * f * 2.02f / Rate;
+
+                float env = Mathf.Clamp01(t / 0.0015f) * Mathf.Exp(-t * 55f) * (1f - 0.25f * k);
+                float tone = Mathf.Sin(phase) + 0.35f * Mathf.Sin(phase2);
+                lp = Mathf.Lerp(lp, (float)(rng.NextDouble() * 2 - 1), 0.5f);
+                data[i] = (tone * env * 0.7f + lp * Mathf.Exp(-t * 260f) * 0.5f) * vol;
+            }
+            return Make(name, data);
+        }
+
         public static AudioClip NoiseBurst(string name, float len, float vol)
         {
             int count = (int)(Rate * len);
